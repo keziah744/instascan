@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Instagram Network Graph</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <!-- Cytoscape.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.25.0/cytoscape.min.js"></script>
+    <!-- Plugin HTML label -->
+    <script src="https://unpkg.com/cytoscape-node-html-label/dist/cytoscape-node-html-label.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+    <style>
+        html, body {
+            width: 100vw; height: 100vh; margin: 0; padding: 0;
+            overflow: hidden;
+            font-family: 'Inter', Arial, sans-serif;
+            color: var(--text);
+            background: var(--bg);
+            transition: background 0.25s, color 0.22s;
+        }
+        :root {
+            --bg: #181a1b;
+            --text: #f3f3f3;
+            --node: #bfc5c7;
+            --edge: #33363c;
+            --form-bg: rgba(24,26,27,0.93);
+            --input-bg: #202325;
+            --input-border: #333;
+            --input-text: #fafbfc;
+        }
+        body.light {
+            --bg: #f6f7f8;
+            --text: #23272c;
+            --node: #888da1;
+            --edge: #b2b4bb;
+            --form-bg: rgba(255,255,255,0.95);
+            --input-bg: #fff;
+            --input-border: #e0e0e0;
+            --input-text: #23272c;
+        }
+        #cy {
+            position: absolute;
+            top: 0; left: 0; width: 100vw; height: 100vh;
+            z-index: 1;
+        }
+        #topbar {
+            position: absolute;
+            top: 16px; left: 16px; z-index: 10;
+            display: flex;
+            flex-direction: row;
+            align-items: flex-start;
+            gap: 18px;
+        }
+        #back-btn, #toggle-mode-btn {
+            background: none;
+            border: none;
+            color: var(--text);
+            font-size: 1.3em;
+            cursor: pointer;
+            opacity: 0.6;
+            margin-right: 6px;
+            transition: opacity 0.2s;
+            padding: 2px 6px;
+        }
+        #back-btn:hover, #toggle-mode-btn:hover { opacity: 1; }
+        #loginForm {
+            display: flex;
+            flex-direction: row;
+            align-items: center;
+            gap: 12px;
+            background: var(--form-bg);
+            border-radius: 12px;
+            padding: 10px 18px 10px 14px;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.04);
+        }
+        #loginForm input, #loginForm button {
+            font-family: inherit;
+            font-size: 1em;
+            padding: 7px 11px;
+            border-radius: 7px;
+            border: 1px solid var(--input-border);
+            background: var(--input-bg);
+            color: var(--input-text);
+            outline: none;
+            margin-right: 0px;
+            transition: background 0.2s, color 0.2s, border 0.2s;
+        }
+        #loginForm input::placeholder { color: #aaa; }
+        #loginForm button {
+            background: #24292e;
+            border: none;
+            font-weight: 600;
+            color: #fafbfc;
+            cursor: pointer;
+            transition: background 0.18s;
+        }
+        body.light #loginForm button {
+            background: #dedede;
+            color: #23272c;
+        }
+        #loginForm button:hover { background: #30363d; }
+        body.light #loginForm button:hover { background: #e4e4e4; }
+        #loginForm input[type="number"] { width: 54px; }
+        /* Style du lien sur le label */
+        .insta-label {
+            font-family: 'Inter', Arial, sans-serif;
+            font-size: 1em;
+            margin-left: 18px;
+            color: var(--text);
+            background: transparent;
+        }
+        .insta-label a {
+            color: #0af;
+            text-decoration: underline;
+            background: transparent;
+            cursor: pointer;
+            font-weight: 500;
+            transition: color 0.15s;
+        }
+        body.light .insta-label a { color: #0055cc; }
+        .insta-label a:hover { color: #ff7b00; }
+    </style>
+</head>
+<body>
+<div id="topbar">
+    <button id="back-btn" title="Retour">&#8592;</button>
+    <button id="toggle-mode-btn" title="Changer le mode">🌙</button>
+    <form id="loginForm">
+        <input type="text" id="username" placeholder="Utilisateur Instagram" autocomplete="username" required>
+        <input type="password" id="password" placeholder="Mot de passe" autocomplete="current-password" required>
+        <input type="number" id="depth" title="Profondeur" min="1" max="4" value="2">
+        <button type="submit">Démarrer</button>
+    </form>
+</div>
+<div id="cy"></div>
+<script src="https://cdn.socket.io/4.4.1/socket.io.min.js"></script>
+<script src="/static/script.js"></script>
+</body>
+</html>
