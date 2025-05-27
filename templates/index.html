@@ -26,6 +26,7 @@
             --input-bg: #202325;
             --input-border: #333;
             --input-text: #fafbfc;
+            --search-bg: rgba(32,35,37,0.95);
         }
         body.light {
             --bg: #f6f7f8;
@@ -37,6 +38,7 @@
             --input-bg: #fff;
             --input-border: #e0e0e0;
             --input-text: #23272c;
+            --search-bg: rgba(255,255,255,0.95);
         }
         
         #graph-container {
@@ -80,6 +82,19 @@
         .node.dragging {
             fill: var(--node-highlight);
             stroke-width: 4px;
+        }
+        
+        .node.highlighted {
+            fill: var(--node-highlight);
+            stroke-width: 4px;
+            stroke: #fff;
+        }
+        
+        .node.search-highlighted {
+            fill: #ffd700;
+            stroke: #ff8c00;
+            stroke-width: 4px;
+            filter: drop-shadow(0 0 8px #ffd700);
         }
         
         .node-label {
@@ -171,6 +186,101 @@
         body.light #loginForm button:hover { background: #e4e4e4; }
         #loginForm input[type="number"] { width: 54px; }
         
+        /* Barre de recherche */
+        #search-container {
+            position: absolute;
+            top: 16px; right: 15px; z-index: 15;
+            width: 280px;
+        }
+        
+        #search-input {
+            width: 100%;
+            font-family: inherit;
+            font-size: 1em;
+            padding: 10px 15px;
+            border-radius: 8px;
+            border: 1px solid var(--input-border);
+            background: var(--search-bg);
+            color: var(--input-text);
+            outline: none;
+            transition: all 0.2s;
+            backdrop-filter: blur(10px);
+        }
+        
+        #search-input:focus {
+            border-color: #0af;
+            box-shadow: 0 0 0 2px rgba(0, 170, 255, 0.2);
+        }
+        
+        #search-input::placeholder {
+            color: #aaa;
+        }
+        
+        #search-results {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            background: var(--search-bg);
+            border: 1px solid var(--input-border);
+            border-top: none;
+            border-radius: 0 0 8px 8px;
+            max-height: 200px;
+            overflow-y: auto;
+            display: none;
+            backdrop-filter: blur(10px);
+            z-index: 20;
+        }
+        
+        .search-result-item {
+            padding: 10px 15px;
+            cursor: pointer;
+            border-bottom: 1px solid var(--input-border);
+            transition: background 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .search-result-item:last-child {
+            border-bottom: none;
+        }
+        
+        .search-result-item:hover {
+            background: var(--input-bg);
+        }
+        
+        .search-result-item.selected {
+            background: var(--input-bg);
+        }
+        
+        .search-result-icon {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--node);
+        }
+        
+        .search-result-icon.main {
+            background: var(--node-highlight);
+        }
+        
+        .search-result-text {
+            flex: 1;
+            color: var(--text);
+        }
+        
+        .search-stats {
+            position: absolute;
+            top: 70px; right: 16px; z-index: 15;
+            background: var(--form-bg);
+            border-radius: 6px;
+            padding: 8px 12px;
+            font-size: 12px;
+            opacity: 0.8;
+            backdrop-filter: blur(10px);
+        }
+        
         /* Messages de statut */
         #status-message {
             position: absolute;
@@ -206,6 +316,14 @@
             right: 20px;
             z-index: 15;
             display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        
+        #graph-controls-row1,
+        #graph-controls-row2,
+        #graph-controls-row3 {
+            display: flex;
             gap: 8px;
         }
         
@@ -219,10 +337,251 @@
             font-size: 12px;
             transition: all 0.2s;
             backdrop-filter: blur(10px);
+            white-space: nowrap;
         }
         
         .control-btn:hover {
             background: var(--input-bg);
+        }
+        
+        .control-btn.export {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            font-weight: 600;
+        }
+        
+        .control-btn.export:hover {
+            background: linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%);
+            transform: translateY(-1px);
+        }
+        
+        .control-btn.import {
+            background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+            color: white;
+            font-weight: 600;
+        }
+        
+        .control-btn.import:hover {
+            background: linear-gradient(135deg, #0f8a7f 0%, #32d66c 100%);
+            transform: translateY(-1px);
+        }
+        
+        /* Export/Import modal */
+        #export-modal, #import-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.7);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+            backdrop-filter: blur(5px);
+        }
+        
+        #export-modal-content, #import-modal-content {
+            background: var(--form-bg);
+            border-radius: 12px;
+            padding: 24px;
+            max-width: 500px;
+            width: 90%;
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--input-border);
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+        
+        #export-modal h3, #import-modal h3 {
+            margin: 0 0 16px 0;
+            color: var(--text);
+            font-size: 1.2em;
+        }
+        
+        #export-options, #import-options {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+        
+        .export-option, .import-option {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 12px;
+            background: var(--input-bg);
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background 0.2s;
+            border: 1px solid transparent;
+        }
+        
+        .export-option:hover, .import-option:hover {
+            border-color: var(--input-border);
+        }
+        
+        .export-option input[type="radio"], .import-option input[type="radio"] {
+            margin: 0;
+        }
+        
+        .export-option-content, .import-option-content {
+            flex: 1;
+        }
+        
+        .export-option-title, .import-option-title {
+            font-weight: 600;
+            color: var(--text);
+            margin-bottom: 4px;
+        }
+        
+        .export-option-desc, .import-option-desc {
+            font-size: 0.9em;
+            opacity: 0.7;
+            color: var(--text);
+        }
+        
+        #export-modal-buttons, #import-modal-buttons {
+            display: flex;
+            gap: 12px;
+            justify-content: flex-end;
+        }
+        
+        #export-modal-buttons button, #import-modal-buttons button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 1em;
+            transition: all 0.2s;
+        }
+        
+        #export-cancel, #import-cancel {
+            background: var(--input-bg);
+            color: var(--text);
+            border: 1px solid var(--input-border);
+        }
+        
+        #export-cancel:hover, #import-cancel:hover {
+            background: var(--input-border);
+        }
+        
+        #export-confirm {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            font-weight: 600;
+        }
+        
+        #export-confirm:hover {
+            background: linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%);
+        }
+        
+        #import-confirm {
+            background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+            color: white;
+            font-weight: 600;
+        }
+        
+        #import-confirm:hover {
+            background: linear-gradient(135deg, #0f8a7f 0%, #32d66c 100%);
+        }
+        
+        /* File input styling */
+        #file-input {
+            width: 100%;
+            padding: 12px;
+            border: 2px dashed var(--input-border);
+            border-radius: 8px;
+            background: var(--input-bg);
+            color: var(--text);
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin: 12px 0;
+        }
+        
+        #file-input:hover {
+            border-color: #11998e;
+            background: var(--form-bg);
+        }
+        
+        #file-input.drag-over {
+            border-color: #38ef7d;
+            background: rgba(56, 239, 125, 0.1);
+        }
+        
+        .file-info {
+            margin-top: 12px;
+            padding: 8px 12px;
+            background: var(--input-bg);
+            border-radius: 6px;
+            font-size: 0.9em;
+            color: var(--text);
+        }
+        
+        .continue-options {
+            margin-top: 16px;
+            padding: 12px;
+            background: var(--input-bg);
+            border-radius: 8px;
+            border-left: 4px solid #38ef7d;
+        }
+        
+        .continue-options h4 {
+            margin: 0 0 8px 0;
+            color: var(--text);
+            font-size: 1em;
+        }
+        
+        .continue-options label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin: 8px 0;
+            cursor: pointer;
+            color: var(--text);
+        }
+        
+        /* Scrollbar pour les modals */
+        #export-modal-content::-webkit-scrollbar,
+        #import-modal-content::-webkit-scrollbar {
+            width: 6px;
+        }
+        
+        #export-modal-content::-webkit-scrollbar-track,
+        #import-modal-content::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        
+        #export-modal-content::-webkit-scrollbar-thumb,
+        #import-modal-content::-webkit-scrollbar-thumb {
+            background: var(--input-border);
+            border-radius: 3px;
+        }
+        
+        #export-modal-content::-webkit-scrollbar-thumb:hover,
+        #import-modal-content::-webkit-scrollbar-thumb:hover {
+            background: var(--node);
+        }
+        
+        /* Scrollbar pour les résultats de recherche */
+        #search-results::-webkit-scrollbar {
+            width: 6px;
+        }
+        
+        #search-results::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        
+        #search-results::-webkit-scrollbar-thumb {
+            background: var(--input-border);
+            border-radius: 3px;
+        }
+        
+        #search-results::-webkit-scrollbar-thumb:hover {
+            background: var(--node);
         }
     </style>
 </head>
@@ -239,13 +598,113 @@
     </form>
 </div>
 
+<div id="search-container">
+    <input type="text" id="search-input" placeholder="🔍 Rechercher un utilisateur..." autocomplete="off">
+    <div id="search-results"></div>
+</div>
+
+<div id="search-stats" class="search-stats" style="display: none;">
+    <span id="node-count">0 nœuds</span> • <span id="link-count">0 liens</span>
+</div>
+
 <div id="graph-container">
     <svg id="graph-svg"></svg>
 </div>
 
 <div id="graph-controls">
-    <button class="control-btn" id="center-btn">Centrer</button>
-    <button class="control-btn" id="restart-simulation-btn">Relancer</button>
+    <div id="graph-controls-row1">
+        <button class="control-btn" id="center-btn">Centrer</button>
+        <button class="control-btn" id="restart-simulation-btn">Relancer</button>
+        <button class="control-btn" id="clear-search-btn">Effacer recherche</button>
+    </div>
+    <div id="graph-controls-row2">
+        <button class="control-btn export" id="export-btn">📊 Exporter</button>
+        <button class="control-btn import" id="import-btn">📂 Importer</button>
+    </div>
+    <div id="graph-controls-row3">
+        <button class="control-btn" id="clear-graph-btn">🗑️ Vider le graphe</button>
+    </div>
+</div>
+
+<!-- Modal d'export -->
+<div id="export-modal">
+    <div id="export-modal-content">
+        <h3>📊 Exporter le graphe</h3>
+        <div id="export-options">
+            <div class="export-option">
+                <input type="radio" name="export-format" value="gexf" id="export-gexf" checked>
+                <div class="export-option-content">
+                    <div class="export-option-title">Format GEXF (Recommandé)</div>
+                    <div class="export-option-desc">Format natif de Gephi avec positions et attributs</div>
+                </div>
+            </div>
+            <div class="export-option">
+                <input type="radio" name="export-format" value="graphml" id="export-graphml">
+                <div class="export-option-content">
+                    <div class="export-option-title">Format GraphML</div>
+                    <div class="export-option-desc">Compatible avec Gephi, yEd et autres outils</div>
+                </div>
+            </div>
+            <div class="export-option">
+                <input type="radio" name="export-format" value="json" id="export-json">
+                <div class="export-option-content">
+                    <div class="export-option-title">Format JSON (Recommandé pour reprendre)</div>
+                    <div class="export-option-desc">Pour sauvegarder et reprendre l'analyse plus tard</div>
+                </div>
+            </div>
+        </div>
+        <div id="export-modal-buttons">
+            <button id="export-cancel">Annuler</button>
+            <button id="export-confirm">Télécharger</button>
+        </div>
+    </div>
+</div>
+
+<!-- Modal d'import -->
+<div id="import-modal">
+    <div id="import-modal-content">
+        <h3>📂 Importer un graphe</h3>
+        <div id="import-options">
+            <div class="import-option">
+                <input type="radio" name="import-format" value="json" id="import-json" checked>
+                <div class="import-option-content">
+                    <div class="import-option-title">Format JSON</div>
+                    <div class="import-option-desc">Fichiers exportés par cette application</div>
+                </div>
+            </div>
+            <div class="import-option">
+                <input type="radio" name="import-format" value="gexf" id="import-gexf">
+                <div class="import-option-content">
+                    <div class="import-option-title">Format GEXF</div>
+                    <div class="import-option-desc">Fichiers de Gephi (positions préservées)</div>
+                </div>
+            </div>
+        </div>
+        
+        <div id="file-input">
+            📁 Cliquez ici ou glissez un fichier pour l'importer
+            <input type="file" style="display: none;" accept=".json,.gexf,.graphml" id="file-input-hidden">
+        </div>
+        
+        <div id="file-info" style="display: none;" class="file-info"></div>
+        
+        <div id="continue-options" style="display: none;" class="continue-options">
+            <h4>🔄 Options de continuation</h4>
+            <label>
+                <input type="checkbox" id="continue-scraping" checked>
+                Continuer le scraping à partir de ce graphe
+            </label>
+            <label>
+                <input type="checkbox" id="preserve-positions" checked>
+                Préserver les positions des nœuds
+            </label>
+        </div>
+        
+        <div id="import-modal-buttons">
+            <button id="import-cancel">Annuler</button>
+            <button id="import-confirm" disabled>Importer</button>
+        </div>
+    </div>
 </div>
 
 <div id="status-message" class="status-message"></div>
