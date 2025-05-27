@@ -11,7 +11,21 @@ let width, height;
 let pendingNodes = [];
 let pendingLinks = [];
 let batchTimer = null;
-let batchDelay = 500; // Délai en ms pour grouper les ajouts
+let batchDelay = 500;
+
+// Variables pour la recherche
+let searchInput, searchResults;
+let selectedSearchIndex = -1;
+let currentSearchResults = [];
+
+// Variables pour l'export/import
+let exportModal, importModal;
+let importedData = null;
+let continueFromImport = false;
+
+// Variables pour la continuation du scraping
+let importedMainUser = null;
+let scrapedUsers = new Set();
 
 // Applique le mode au <body>
 function applyMode(mode) {
@@ -38,36 +52,802 @@ function showStatusMessage(message, type = 'info') {
     }
 }
 
-// Initialisation du graphe D3
+// Mise à jour des statistiques
+function updateStats() {
+    document.getElementById('node-count').textContent = `${nodes.length} nœud${nodes.length > 1 ? 's' : ''}`;
+    document.getElementById('link-count').textContent = `${links.length} lien${links.length > 1 ? 's' : ''}`;
+    document.getElementById('search-stats').style.display = nodes.length > 0 ? 'block' : 'none';
+}
+
+// === FONCTIONS D'EXPORT (existantes) ===
+
+function escapeXml(text) {
+    if (typeof text !== 'string') text = String(text);
+    return text.replace(/[<>&'"]/g, function(c) {
+        switch (c) {
+            case '<': return '&lt;';
+            case '>': return '&gt;';
+            case '&': return '&amp;';
+            case "'": return '&apos;';
+            case '"': return '&quot;';
+            default: return c;
+        }
+    });
+}
+
+function exportToGEXF() {
+    const timestamp = new Date().toISOString();
+    const creator = "Instagram Network Analyzer";
+    
+    let gexf = `<?xml version="1.0" encoding="UTF-8"?>
+<gexf xmlns="http://www.gexf.net/1.3" version="1.3" xmlns:viz="http://www.gexf.net/1.3/viz" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.gexf.net/1.3 http://www.gexf.net/1.3/gexf.xsd">
+    <meta lastmodifieddate="${timestamp}">
+        <creator>${creator}</creator>
+        <description>Instagram Network Analysis - Generated on ${new Date().toLocaleDateString()}</description>
+    </meta>
+    <graph mode="static" defaultedgetype="directed">
+        <attributes class="node">
+            <attribute id="0" title="type" type="string"/>
+            <attribute id="1" title="label" type="string"/>
+            <attribute id="2" title="scraped" type="boolean"/>
+        </attributes>
+        <nodes>`;
+
+    nodes.forEach(node => {
+        const size = node.isMain ? 15 : 10;
+        const color = node.isMain ? 'ff6b6b' : 'bfc5c7';
+        
+        gexf += `
+            <node id="${escapeXml(node.id)}" label="${escapeXml(node.label)}">
+                <attvalues>
+                    <attvalue for="0" value="${node.isMain ? 'main' : 'follower'}"/>
+                    <attvalue for="1" value="${escapeXml(node.label)}"/>
+                    <attvalue for="2" value="${scrapedUsers.has(node.id)}"/>
+                </attvalues>
+                <viz:size value="${size}"/>
+                <viz:position x="${node.x.toFixed(2)}" y="${node.y.toFixed(2)}" z="0"/>
+                <viz:color r="${parseInt(color.substr(0,2), 16)}" g="${parseInt(color.substr(2,2), 16)}" b="${parseInt(color.substr(4,2), 16)}"/>
+            </node>`;
+    });
+
+    gexf += `
+        </nodes>
+        <edges>`;
+
+    links.forEach((link, index) => {
+        const sourceId = link.source.id || link.source;
+        const targetId = link.target.id || link.target;
+        
+        gexf += `
+            <edge id="${index}" source="${escapeXml(sourceId)}" target="${escapeXml(targetId)}"/>`;
+    });
+
+    gexf += `
+        </edges>
+    </graph>
+</gexf>`;
+
+    return gexf;
+}
+
+function exportToGraphML() {
+    let graphml = `<?xml version="1.0" encoding="UTF-8"?>
+<graphml xmlns="http://graphml.graphdrawing.org/xmlns" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://graphml.graphdrawing.org/xmlns http://graphml.graphdrawing.org/xmlns/1.0/graphml.xsd">
+    <key id="d0" for="node" attr.name="label" attr.type="string"/>
+    <key id="d1" for="node" attr.name="type" attr.type="string"/>
+    <key id="d2" for="node" attr.name="x" attr.type="double"/>
+    <key id="d3" for="node" attr.name="y" attr.type="double"/>
+    <key id="d4" for="node" attr.name="size" attr.type="double"/>
+    <key id="d5" for="node" attr.name="scraped" attr.type="boolean"/>
+    <graph id="InstagramNetwork" edgedefault="directed">`;
+
+    nodes.forEach(node => {
+        const size = node.isMain ? 15 : 10;
+        
+        graphml += `
+        <node id="${escapeXml(node.id)}">
+            <data key="d0">${escapeXml(node.label)}</data>
+            <data key="d1">${node.isMain ? 'main' : 'follower'}</data>
+            <data key="d2">${node.x.toFixed(2)}</data>
+            <data key="d3">${node.y.toFixed(2)}</data>
+            <data key="d4">${size}</data>
+            <data key="d5">${scrapedUsers.has(node.id)}</data>
+        </node>`;
+    });
+
+    links.forEach((link, index) => {
+        const sourceId = link.source.id || link.source;
+        const targetId = link.target.id || link.target;
+        
+        graphml += `
+        <edge id="e${index}" source="${escapeXml(sourceId)}" target="${escapeXml(targetId)}"/>`;
+    });
+
+    graphml += `
+    </graph>
+</graphml>`;
+
+    return graphml;
+}
+
+function exportToJSON() {
+    const exportData = {
+        metadata: {
+            creator: "Instagram Network Analyzer",
+            timestamp: new Date().toISOString(),
+            nodes_count: nodes.length,
+            edges_count: links.length,
+            main_user: importedMainUser || nodes.find(n => n.isMain)?.id,
+            scraped_users: Array.from(scrapedUsers)
+        },
+        nodes: nodes.map(node => ({
+            id: node.id,
+            label: node.label,
+            type: node.isMain ? 'main' : 'follower',
+            x: parseFloat(node.x.toFixed(2)),
+            y: parseFloat(node.y.toFixed(2)),
+            size: node.isMain ? 15 : 10,
+            scraped: scrapedUsers.has(node.id)
+        })),
+        edges: links.map((link, index) => ({
+            id: index,
+            source: link.source.id || link.source,
+            target: link.target.id || link.target,
+            type: 'follows'
+        }))
+    };
+
+    return JSON.stringify(exportData, null, 2);
+}
+
+// === NOUVELLES FONCTIONS D'IMPORT ===
+
+function parseJSONFile(content) {
+    try {
+        const data = JSON.parse(content);
+        
+        if (!data.nodes || !data.edges) {
+            throw new Error('Format JSON invalide : nodes et edges requis');
+        }
+        
+        return {
+            nodes: data.nodes.map(node => ({
+                id: node.id,
+                label: node.label || node.id,
+                isMain: node.type === 'main',
+                x: node.x || (width / 2 + (Math.random() - 0.5) * 400),
+                y: node.y || (height / 2 + (Math.random() - 0.5) * 400),
+                vx: 0,
+                vy: 0,
+                scraped: node.scraped || false
+            })),
+            edges: data.edges.map(edge => ({
+                source: edge.source,
+                target: edge.target
+            })),
+            metadata: data.metadata || {},
+            scrapedUsers: data.metadata?.scraped_users || [],
+            mainUser: data.metadata?.main_user
+        };
+    } catch (error) {
+        throw new Error(`Erreur de parsing JSON: ${error.message}`);
+    }
+}
+
+function parseGEXFFile(content) {
+    try {
+        const parser = new DOMParser();
+        const xmlDoc = parser.parseFromString(content, "text/xml");
+        
+        if (xmlDoc.getElementsByTagName("parsererror").length > 0) {
+            throw new Error('XML malformé');
+        }
+        
+        const nodes = [];
+        const edges = [];
+        const scrapedUsers = [];
+        let mainUser = null;
+        
+        // Parser les nœuds
+        const nodeElements = xmlDoc.getElementsByTagName('node');
+        for (let i = 0; i < nodeElements.length; i++) {
+            const nodeEl = nodeElements[i];
+            const id = nodeEl.getAttribute('id');
+            const label = nodeEl.getAttribute('label') || id;
+            
+            // Position
+            const posEl = nodeEl.getElementsByTagName('viz:position')[0];
+            const x = posEl ? parseFloat(posEl.getAttribute('x')) : (width / 2 + (Math.random() - 0.5) * 400);
+            const y = posEl ? parseFloat(posEl.getAttribute('y')) : (height / 2 + (Math.random() - 0.5) * 400);
+            
+            // Attributs
+            let isMain = false;
+            let scraped = false;
+            const attvalues = nodeEl.getElementsByTagName('attvalue');
+            for (let j = 0; j < attvalues.length; j++) {
+                const att = attvalues[j];
+                const attrId = att.getAttribute('for');
+                const value = att.getAttribute('value');
+                
+                if (attrId === '0' && value === 'main') {
+                    isMain = true;
+                    mainUser = id;
+                } else if (attrId === '2' && value === 'true') {
+                    scraped = true;
+                    scrapedUsers.push(id);
+                }
+            }
+            
+            nodes.push({
+                id: id,
+                label: label,
+                isMain: isMain,
+                x: x,
+                y: y,
+                vx: 0,
+                vy: 0,
+                scraped: scraped
+            });
+        }
+        
+        // Parser les arêtes
+        const edgeElements = xmlDoc.getElementsByTagName('edge');
+        for (let i = 0; i < edgeElements.length; i++) {
+            const edgeEl = edgeElements[i];
+            edges.push({
+                source: edgeEl.getAttribute('source'),
+                target: edgeEl.getAttribute('target')
+            });
+        }
+        
+        return {
+            nodes: nodes,
+            edges: edges,
+            metadata: {},
+            scrapedUsers: scrapedUsers,
+            mainUser: mainUser
+        };
+    } catch (error) {
+        throw new Error(`Erreur de parsing GEXF: ${error.message}`);
+    }
+}
+
+function loadImportedGraph(data, preservePositions, continueScraping) {
+    try {
+        // Nettoyer le graphe actuel
+        nodes = [];
+        links = [];
+        nodeMap.clear();
+        scrapedUsers.clear();
+        
+        // Charger les données
+        data.nodes.forEach(node => {
+            if (!preservePositions) {
+                node.x = width / 2 + (Math.random() - 0.5) * 400;
+                node.y = height / 2 + (Math.random() - 0.5) * 400;
+            }
+            nodes.push(node);
+            nodeMap.set(node.id, node);
+            
+            if (node.scraped) {
+                scrapedUsers.add(node.id);
+            }
+        });
+        
+        data.edges.forEach(edge => {
+            links.push(edge);
+        });
+        
+        // Configuration pour la continuation
+        if (continueScraping) {
+            continueFromImport = true;
+            importedMainUser = data.mainUser;
+            
+            // Marquer les utilisateurs scrapés
+            data.scrapedUsers.forEach(userId => {
+                scrapedUsers.add(userId);
+            });
+            
+            // Pré-remplir le formulaire si possible
+            if (importedMainUser) {
+                document.getElementById('username').value = importedMainUser;
+            }
+        }
+        
+        // Mettre à jour le graphe
+        updateGraphWithAnimation();
+        updateStats();
+        
+        // Centrer le graphe
+        setTimeout(() => {
+            centerGraph();
+        }, 1000);
+        
+        const message = continueScraping ? 
+            `✅ Graphe importé (${nodes.length} nœuds, ${links.length} liens) - Prêt à continuer` :
+            `✅ Graphe importé (${nodes.length} nœuds, ${links.length} liens)`;
+        
+        showStatusMessage(message, 'success');
+        
+    } catch (error) {
+        console.error('Erreur lors du chargement:', error);
+        showStatusMessage('❌ Erreur lors du chargement du graphe', 'error');
+    }
+}
+
+// Fonction pour télécharger un fichier
+function downloadFile(content, filename, contentType) {
+    const blob = new Blob([content], { type: contentType });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+}
+
+// Initialisation du modal d'export
+function initExportModal() {
+    exportModal = document.getElementById('export-modal');
+    
+    document.querySelectorAll('.export-option').forEach(option => {
+        option.addEventListener('click', () => {
+            const radio = option.querySelector('input[type="radio"]');
+            radio.checked = true;
+        });
+    });
+    
+    document.getElementById('export-btn').addEventListener('click', () => {
+        if (nodes.length === 0) {
+            showStatusMessage('Aucun graphe à exporter', 'warning');
+            return;
+        }
+        exportModal.style.display = 'flex';
+    });
+    
+    document.getElementById('export-cancel').addEventListener('click', () => {
+        exportModal.style.display = 'none';
+    });
+    
+    document.getElementById('export-confirm').addEventListener('click', () => {
+        const selectedFormat = document.querySelector('input[name="export-format"]:checked').value;
+        performExport(selectedFormat);
+        exportModal.style.display = 'none';
+    });
+    
+    exportModal.addEventListener('click', (e) => {
+        if (e.target === exportModal) {
+            exportModal.style.display = 'none';
+        }
+    });
+}
+
+// Initialisation du modal d'import
+function initImportModal() {
+    importModal = document.getElementById('import-modal');
+    const fileInput = document.getElementById('file-input');
+    const fileInputHidden = document.getElementById('file-input-hidden');
+    const fileInfo = document.getElementById('file-info');
+    const continueOptions = document.getElementById('continue-options');
+    const importConfirm = document.getElementById('import-confirm');
+    
+    // Options d'import cliquables
+    document.querySelectorAll('.import-option').forEach(option => {
+        option.addEventListener('click', () => {
+            const radio = option.querySelector('input[type="radio"]');
+            radio.checked = true;
+        });
+    });
+    
+    // Gestion du clic sur la zone de drop
+    fileInput.addEventListener('click', () => {
+        fileInputHidden.click();
+    });
+    
+    // Gestion du drag & drop
+    fileInput.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        fileInput.classList.add('drag-over');
+    });
+    
+    fileInput.addEventListener('dragleave', () => {
+        fileInput.classList.remove('drag-over');
+    });
+    
+    fileInput.addEventListener('drop', (e) => {
+        e.preventDefault();
+        fileInput.classList.remove('drag-over');
+        const files = e.dataTransfer.files;
+        if (files.length > 0) {
+            handleFileSelection(files[0]);
+        }
+    });
+    
+    // Gestion de la sélection de fichier
+    fileInputHidden.addEventListener('change', (e) => {
+        if (e.target.files.length > 0) {
+            handleFileSelection(e.target.files[0]);
+        }
+    });
+    
+    function handleFileSelection(file) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            try {
+                const content = e.target.result;
+                const extension = file.name.split('.').pop().toLowerCase();
+                
+                let parsedData;
+                if (extension === 'json') {
+                    parsedData = parseJSONFile(content);
+                } else if (extension === 'gexf') {
+                    parsedData = parseGEXFFile(content);
+                } else {
+                    throw new Error('Format de fichier non supporté');
+                }
+                
+                importedData = parsedData;
+                
+                // Afficher les informations du fichier
+                fileInfo.style.display = 'block';
+                fileInfo.innerHTML = `
+                    <strong>📄 ${file.name}</strong><br>
+                    📊 ${parsedData.nodes.length} nœuds, ${parsedData.edges.length} liens<br>
+                    ${parsedData.mainUser ? `👤 Utilisateur principal: ${parsedData.mainUser}` : ''}
+                    ${parsedData.scrapedUsers.length > 0 ? `<br>✅ ${parsedData.scrapedUsers.length} utilisateurs déjà scrapés` : ''}
+                `;
+                
+                // Afficher les options de continuation si c'est un JSON avec métadonnées
+                if (extension === 'json' && parsedData.mainUser) {
+                    continueOptions.style.display = 'block';
+                } else {
+                    continueOptions.style.display = 'none';
+                }
+                
+                importConfirm.disabled = false;
+                
+            } catch (error) {
+                showStatusMessage(`❌ Erreur: ${error.message}`, 'error');
+                fileInfo.style.display = 'none';
+                continueOptions.style.display = 'none';
+                importConfirm.disabled = true;
+            }
+        };
+        reader.readAsText(file);
+    }
+    
+    // Boutons du modal
+    document.getElementById('import-btn').addEventListener('click', () => {
+        importModal.style.display = 'flex';
+    });
+    
+    document.getElementById('import-cancel').addEventListener('click', () => {
+        importModal.style.display = 'none';
+        resetImportModal();
+    });
+    
+    document.getElementById('import-confirm').addEventListener('click', () => {
+        if (importedData) {
+            const preservePositions = document.getElementById('preserve-positions').checked;
+            const continueScraping = document.getElementById('continue-scraping').checked;
+            
+            loadImportedGraph(importedData, preservePositions, continueScraping);
+            importModal.style.display = 'none';
+            resetImportModal();
+        }
+    });
+    
+    importModal.addEventListener('click', (e) => {
+        if (e.target === importModal) {
+            importModal.style.display = 'none';
+            resetImportModal();
+        }
+    });
+    
+    function resetImportModal() {
+        importedData = null;
+        fileInfo.style.display = 'none';
+        continueOptions.style.display = 'none';
+        importConfirm.disabled = true;
+        fileInputHidden.value = '';
+    }
+}
+
+// Fonction d'export principale
+function performExport(format) {
+    let content, filename, contentType;
+    
+    const timestamp = new Date().toISOString().split('T')[0];
+    const mainNode = nodes.find(n => n.isMain);
+    const baseName = mainNode ? `instagram_network_${mainNode.label}_${timestamp}` : `instagram_network_${timestamp}`;
+    
+    switch (format) {
+        case 'gexf':
+            content = exportToGEXF();
+            filename = `${baseName}.gexf`;
+            contentType = 'application/xml';
+            break;
+        case 'graphml':
+            content = exportToGraphML();
+            filename = `${baseName}.graphml`;
+            contentType = 'application/xml';
+            break;
+        case 'json':
+            content = exportToJSON();
+            filename = `${baseName}.json`;
+            contentType = 'application/json';
+            break;
+        default:
+            showStatusMessage('Format d\'export non supporté', 'error');
+            return;
+    }
+    
+    try {
+        downloadFile(content, filename, contentType);
+        showStatusMessage(`✅ Graphe exporté: ${filename}`, 'success');
+        
+        if (format === 'gexf') {
+            setTimeout(() => {
+                showStatusMessage('💡 Ouvrez Gephi et utilisez "Fichier > Ouvrir" pour charger le fichier .gexf', 'info');
+            }, 2000);
+        } else if (format === 'json') {
+            setTimeout(() => {
+                showStatusMessage('💡 Utilisez "Importer" pour recharger ce fichier et continuer l\'analyse', 'info');
+            }, 2000);
+        }
+    } catch (error) {
+        console.error('Erreur lors de l\'export:', error);
+        showStatusMessage('❌ Erreur lors de l\'export', 'error');
+    }
+}
+
+// Fonction pour vider le graphe
+function clearGraph() {
+    if (nodes.length === 0) {
+        showStatusMessage('Le graphe est déjà vide', 'info');
+        return;
+    }
+    
+    if (confirm('Êtes-vous sûr de vouloir vider le graphe ? Cette action est irréversible.')) {
+        nodes = [];
+        links = [];
+        nodeMap.clear();
+        scrapedUsers.clear();
+        importedMainUser = null;
+        continueFromImport = false;
+        
+        updateGraphWithAnimation();
+        updateStats();
+        
+        showStatusMessage('🗑️ Graphe vidé', 'info');
+    }
+}
+
+// === RESTE DU CODE (fonctions de recherche, graphe, etc.) ===
+
+// Initialisation de la recherche
+function initSearch() {
+    searchInput = document.getElementById('search-input');
+    searchResults = document.getElementById('search-results');
+    
+    searchInput.addEventListener('input', handleSearchInput);
+    searchInput.addEventListener('keydown', handleSearchKeydown);
+    searchInput.addEventListener('focus', handleSearchFocus);
+    searchInput.addEventListener('blur', handleSearchBlur);
+    
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('#search-container')) {
+            hideSearchResults();
+        }
+    });
+}
+
+function handleSearchInput(e) {
+    const query = e.target.value.trim().toLowerCase();
+    selectedSearchIndex = -1;
+    
+    if (query.length === 0) {
+        hideSearchResults();
+        clearSearchHighlight();
+        return;
+    }
+    
+    currentSearchResults = nodes
+        .filter(node => node.label.toLowerCase().includes(query))
+        .sort((a, b) => {
+            const aLabel = a.label.toLowerCase();
+            const bLabel = b.label.toLowerCase();
+            
+            if (aLabel === query && bLabel !== query) return -1;
+            if (bLabel === query && aLabel !== query) return 1;
+            if (aLabel.startsWith(query) && !bLabel.startsWith(query)) return -1;
+            if (bLabel.startsWith(query) && !aLabel.startsWith(query)) return 1;
+            
+            return aLabel.localeCompare(bLabel);
+        })
+        .slice(0, 10);
+    
+    displaySearchResults();
+}
+
+function handleSearchKeydown(e) {
+    if (currentSearchResults.length === 0) return;
+    
+    switch (e.key) {
+        case 'ArrowDown':
+            e.preventDefault();
+            selectedSearchIndex = Math.min(selectedSearchIndex + 1, currentSearchResults.length - 1);
+            updateSearchSelection();
+            break;
+        case 'ArrowUp':
+            e.preventDefault();
+            selectedSearchIndex = Math.max(selectedSearchIndex - 1, -1);
+            updateSearchSelection();
+            break;
+        case 'Enter':
+            e.preventDefault();
+            if (selectedSearchIndex >= 0) {
+                selectSearchResult(currentSearchResults[selectedSearchIndex]);
+            } else if (currentSearchResults.length > 0) {
+                selectSearchResult(currentSearchResults[0]);
+            }
+            break;
+        case 'Escape':
+            e.preventDefault();
+            hideSearchResults();
+            clearSearchHighlight();
+            searchInput.blur();
+            break;
+    }
+}
+
+function handleSearchFocus() {
+    if (currentSearchResults.length > 0) {
+        showSearchResults();
+    }
+}
+
+function handleSearchBlur() {
+    setTimeout(() => {
+        if (!document.querySelector('#search-results:hover')) {
+            hideSearchResults();
+        }
+    }, 200);
+}
+
+function displaySearchResults() {
+    if (currentSearchResults.length === 0) {
+        hideSearchResults();
+        return;
+    }
+    
+    const html = currentSearchResults.map((node, index) => `
+        <div class="search-result-item ${index === selectedSearchIndex ? 'selected' : ''}" 
+             data-index="${index}">
+            <div class="search-result-icon ${node.isMain ? 'main' : ''}"></div>
+            <div class="search-result-text">${highlightQuery(node.label, searchInput.value)}</div>
+        </div>
+    `).join('');
+    
+    searchResults.innerHTML = html;
+    
+    searchResults.querySelectorAll('.search-result-item').forEach((item, index) => {
+        item.addEventListener('click', () => {
+            selectSearchResult(currentSearchResults[index]);
+        });
+    });
+    
+    showSearchResults();
+}
+
+function highlightQuery(text, query) {
+    if (!query) return text;
+    const regex = new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+    return text.replace(regex, '<strong>$1</strong>');
+}
+
+function showSearchResults() {
+    searchResults.style.display = 'block';
+}
+
+function hideSearchResults() {
+    searchResults.style.display = 'none';
+    selectedSearchIndex = -1;
+}
+
+function updateSearchSelection() {
+    searchResults.querySelectorAll('.search-result-item').forEach((item, index) => {
+        item.classList.toggle('selected', index === selectedSearchIndex);
+    });
+    
+    if (selectedSearchIndex >= 0) {
+        const selectedItem = searchResults.children[selectedSearchIndex];
+        selectedItem.scrollIntoView({ block: 'nearest' });
+    }
+}
+
+function selectSearchResult(node) {
+    hideSearchResults();
+    searchInput.value = node.label;
+    
+    clearSearchHighlight();
+    
+    const nodeElement = svg.select('.nodes')
+        .selectAll('.node')
+        .filter(d => d.id === node.id);
+    
+    nodeElement.classed('search-highlighted', true);
+    
+    centerOnNode(node);
+    
+    showStatusMessage(`Nœud "${node.label}" trouvé et centré`, 'success');
+    
+    setTimeout(() => {
+        clearSearchHighlight();
+    }, 3000);
+}
+
+function centerOnNode(node) {
+    const zoom = d3.zoom();
+    const svg_element = d3.select('#graph-svg');
+    
+    const scale = 1.5;
+    const transform = d3.zoomIdentity
+        .translate(width / 2 - node.x * scale, height / 2 - node.y * scale)
+        .scale(scale);
+    
+    svg_element.transition()
+        .duration(750)
+        .call(zoom.transform, transform);
+}
+
+function clearSearchHighlight() {
+    svg.selectAll('.node').classed('search-highlighted', false);
+}
+
+function clearSearch() {
+    searchInput.value = '';
+    hideSearchResults();
+    clearSearchHighlight();
+    currentSearchResults = [];
+    searchInput.focus();
+}
+
+// INITIALISATION DU GRAPHE AVEC ESPACEMENT AMÉLIORÉ
 function initGraph() {
     const container = document.getElementById('graph-container');
     width = container.clientWidth;
     height = container.clientHeight;
     
-    // Nettoyer le SVG existant
     d3.select('#graph-svg').selectAll('*').remove();
     
     svg = d3.select('#graph-svg')
         .attr('width', width)
         .attr('height', height);
     
-    // Créer les groupes pour les liens et les nœuds
     const linkGroup = svg.append('g').attr('class', 'links');
     const nodeGroup = svg.append('g').attr('class', 'nodes');
     const labelGroup = svg.append('g').attr('class', 'labels');
     
-    // Configuration de la simulation de forces - Plus stable au départ
+    // PARAMÈTRES MODIFIÉS POUR PLUS D'ESPACEMENT
     simulation = d3.forceSimulation()
-        .force('link', d3.forceLink().id(d => d.id).distance(100).strength(0.3))
-        .force('charge', d3.forceManyBody().strength(-400).distanceMax(300))
+        .force('link', d3.forceLink().id(d => d.id)
+            .distance(180)        // Augmenté de 100 à 180
+            .strength(0.2))       // Réduit de 0.3 à 0.2 pour des liens plus faibles
+        .force('charge', d3.forceManyBody()
+            .strength(-800)       // Augmenté de -400 à -800 pour plus de répulsion
+            .distanceMax(500))    // Augmenté de 300 à 500
         .force('center', d3.forceCenter(width / 2, height / 2))
-        .force('collision', d3.forceCollide().radius(30).strength(0.9))
-        .force('x', d3.forceX(width / 2).strength(0.05))
-        .force('y', d3.forceY(height / 2).strength(0.05))
-        .alphaDecay(0.02) // Décroissance plus lente pour stabilité
-        .velocityDecay(0.8); // Amortissement pour éviter les oscillations
+        .force('collision', d3.forceCollide()
+            .radius(50)           // Augmenté de 30 à 50 pour éviter les chevauchements
+            .strength(1.0))       // Augmenté de 0.9 à 1.0 pour plus de force
+        .force('x', d3.forceX(width / 2).strength(0.03))  // Réduit de 0.05 à 0.03
+        .force('y', d3.forceY(height / 2).strength(0.03)) // Réduit de 0.05 à 0.03
+        .alphaDecay(0.015)       // Réduit de 0.02 à 0.015 pour plus de stabilité
+        .velocityDecay(0.7);     // Réduit de 0.8 à 0.7 pour plus de mouvement
     
-    // Zoom et pan
     const zoom = d3.zoom()
         .scaleExtent([0.1, 4])
         .on('zoom', (event) => {
@@ -76,7 +856,6 @@ function initGraph() {
     
     svg.call(zoom);
     
-    // Redimensionnement
     window.addEventListener('resize', () => {
         width = container.clientWidth;
         height = container.clientHeight;
@@ -87,22 +866,20 @@ function initGraph() {
         simulation.alpha(0.3).restart();
     });
     
-    console.log('Graphe D3 initialisé');
+    console.log('Graphe D3 initialisé avec espacement amélioré');
 }
 
-// Fonction pour calculer une position optimale pour un nouveau nœud
+// FONCTION MODIFIÉE POUR CALCULER DES POSITIONS PLUS ESPACÉES
 function calculateOptimalPosition(nodeId, connectedNodes) {
     if (connectedNodes.length === 0) {
-        // Position aléatoire autour du centre pour les nœuds isolés
         const angle = Math.random() * 2 * Math.PI;
-        const radius = 150 + Math.random() * 100;
+        const radius = 200 + Math.random() * 200;  // Augmenté de 150+100 à 200+200
         return {
             x: width / 2 + Math.cos(angle) * radius,
             y: height / 2 + Math.sin(angle) * radius
         };
     }
     
-    // Calculer la position moyenne des nœuds connectés
     let avgX = 0, avgY = 0;
     connectedNodes.forEach(nodeId => {
         const node = nodeMap.get(nodeId);
@@ -115,9 +892,8 @@ function calculateOptimalPosition(nodeId, connectedNodes) {
     avgX /= connectedNodes.length;
     avgY /= connectedNodes.length;
     
-    // Ajouter un offset aléatoire pour éviter les superpositions
     const offsetAngle = Math.random() * 2 * Math.PI;
-    const offsetRadius = 80 + Math.random() * 40;
+    const offsetRadius = 120 + Math.random() * 80;  // Augmenté de 80+40 à 120+80
     
     return {
         x: avgX + Math.cos(offsetAngle) * offsetRadius,
@@ -125,17 +901,14 @@ function calculateOptimalPosition(nodeId, connectedNodes) {
     };
 }
 
-// Fonction pour ajouter un nœud avec position intelligente
 function addNodeToBatch(id, label, isMain = false) {
     if (nodeMap.has(id)) return;
     
-    // Trouver les nœuds connectés existants
     const connectedNodes = pendingLinks
         .filter(link => link.source === id || link.target === id)
         .map(link => link.source === id ? link.target : link.source)
         .filter(nodeId => nodeMap.has(nodeId));
     
-    // Calculer la position optimale
     const position = calculateOptimalPosition(id, connectedNodes);
     
     const node = {
@@ -144,16 +917,14 @@ function addNodeToBatch(id, label, isMain = false) {
         isMain: isMain,
         x: position.x,
         y: position.y,
-        vx: 0, // Vitesse initiale nulle
+        vx: 0,
         vy: 0
     };
     
     pendingNodes.push(node);
 }
 
-// Fonction pour ajouter un lien au batch
 function addLinkToBatch(sourceId, targetId) {
-    // Vérifier si le lien existe déjà
     const linkExists = [...links, ...pendingLinks].some(link => 
         (link.source === sourceId && link.target === targetId) ||
         (link.source === targetId && link.target === sourceId) ||
@@ -169,32 +940,27 @@ function addLinkToBatch(sourceId, targetId) {
     }
 }
 
-// Fonction pour traiter le batch
 function processBatch() {
     if (pendingNodes.length === 0 && pendingLinks.length === 0) return;
     
     console.log(`Traitement du batch: ${pendingNodes.length} nœuds, ${pendingLinks.length} liens`);
     
-    // Ajouter tous les nœuds en attente
     pendingNodes.forEach(node => {
         nodes.push(node);
         nodeMap.set(node.id, node);
     });
     
-    // Ajouter tous les liens en attente
     pendingLinks.forEach(link => {
         links.push(link);
     });
     
-    // Nettoyer les tableaux en attente
     pendingNodes = [];
     pendingLinks = [];
     
-    // Mettre à jour le graphe avec animation
     updateGraphWithAnimation();
+    updateStats();
 }
 
-// Fonction pour programmer le traitement du batch
 function scheduleBatchProcessing() {
     if (batchTimer) {
         clearTimeout(batchTimer);
@@ -206,11 +972,9 @@ function scheduleBatchProcessing() {
     }, batchDelay);
 }
 
-// Fonction pour mettre à jour le graphe avec animation
 function updateGraphWithAnimation() {
     if (!simulation) return;
     
-    // Mise à jour des liens avec animation d'entrée
     const link = svg.select('.links')
         .selectAll('.link')
         .data(links, d => `${d.source.id || d.source}-${d.target.id || d.target}`);
@@ -229,7 +993,6 @@ function updateGraphWithAnimation() {
         .duration(500)
         .style('opacity', 0.6);
     
-    // Mise à jour des nœuds avec animation d'entrée
     const node = svg.select('.nodes')
         .selectAll('.node')
         .data(nodes, d => d.id);
@@ -254,17 +1017,16 @@ function updateGraphWithAnimation() {
             .on('end', dragended))
         .on('click', (event, d) => {
             console.log('Nœud cliqué:', d.label);
+            searchInput.value = d.label;
             highlightNode(event.currentTarget);
         });
     
-    // Animation d'apparition des nœuds
     nodeEnter
         .transition()
         .duration(600)
         .attr('r', d => d.isMain ? 8 : 6)
         .style('opacity', 1);
     
-    // Mise à jour des labels avec animation
     const label = svg.select('.labels')
         .selectAll('.node-label')
         .data(nodes, d => d.id);
@@ -285,22 +1047,18 @@ function updateGraphWithAnimation() {
         .attr('y', d => d.y)
         .style('opacity', 0);
     
-    // Animation d'apparition des labels (légèrement retardée)
     labelEnter
         .transition()
         .delay(200)
         .duration(400)
         .style('opacity', 1);
     
-    // Mise à jour de la simulation avec une transition douce
     simulation.nodes(nodes);
     simulation.force('link').links(links);
     
-    // Relancer la simulation avec moins d'intensité si ce n'est pas le premier démarrage
     const isInitialSetup = nodes.length <= 1;
     simulation.alpha(isInitialSetup ? 0.8 : 0.3).restart();
     
-    // Fonction tick pour l'animation
     simulation.on('tick', () => {
         svg.selectAll('.link')
             .attr('x1', d => d.source.x)
@@ -318,7 +1076,6 @@ function updateGraphWithAnimation() {
     });
 }
 
-// Fonction de highlight améliorée
 function highlightNode(nodeElement) {
     svg.selectAll('.node').style('opacity', 0.3);
     svg.selectAll('.link').style('opacity', 0.1);
@@ -333,7 +1090,6 @@ function highlightNode(nodeElement) {
     }, 2000);
 }
 
-// Fonctions de drag améliorées
 function dragstarted(event, d) {
     if (!event.active) simulation.alphaTarget(0.3).restart();
     d.fx = d.x;
@@ -353,7 +1109,6 @@ function dragended(event, d) {
     d3.select(this).classed('dragging', false);
 }
 
-// Fonction pour centrer le graphe
 function centerGraph() {
     if (!simulation || nodes.length === 0) return;
     
@@ -371,7 +1126,6 @@ function centerGraph() {
         .call(zoom.transform, transform);
 }
 
-// Fonction pour relancer la simulation
 function restartSimulation() {
     if (simulation) {
         simulation.alpha(1).restart();
@@ -401,8 +1155,10 @@ document.getElementById('clear-session-btn').onclick = function() {
 
 document.getElementById('center-btn').onclick = centerGraph;
 document.getElementById('restart-simulation-btn').onclick = restartSimulation;
+document.getElementById('clear-search-btn').onclick = clearSearch;
+document.getElementById('clear-graph-btn').onclick = clearGraph;
 
-// Formulaire de connexion
+// Formulaire de connexion avec support de continuation
 document.getElementById('loginForm').onsubmit = function(e) {
     e.preventDefault();
     if (isStarted) return;
@@ -411,12 +1167,18 @@ document.getElementById('loginForm').onsubmit = function(e) {
     document.getElementById('loginForm').style.opacity = 0.4;
     document.getElementById('loginForm').querySelectorAll('input,button').forEach(el=>el.disabled=true);
 
-    // Réinitialiser
-    nodes = [];
-    links = [];
-    nodeMap.clear();
+    // Si on continue depuis un import, ne pas nettoyer le graphe
+    if (!continueFromImport) {
+        nodes = [];
+        links = [];
+        nodeMap.clear();
+        scrapedUsers.clear();
+    }
+    
     pendingNodes = [];
     pendingLinks = [];
+    currentSearchResults = [];
+    clearSearch();
     
     if (batchTimer) {
         clearTimeout(batchTimer);
@@ -434,24 +1196,40 @@ document.getElementById('loginForm').onsubmit = function(e) {
     const max_depth = document.getElementById('depth').value;
 
     showStatusMessage('Connexion en cours...', 'info');
-    socket.emit('start_scraping', { username, password, max_depth });
     
-    // Ajouter le nœud principal immédiatement
-    const mainNode = {
-        id: username,
-        label: username,
-        isMain: true,
-        x: width / 2,
-        y: height / 2,
-        vx: 0,
-        vy: 0
+    // Envoyer les informations de continuation si applicable
+    const scrapingData = { 
+        username, 
+        password, 
+        max_depth,
+        continue_from_import: continueFromImport,
+        scraped_users: continueFromImport ? Array.from(scrapedUsers) : []
     };
     
-    nodes.push(mainNode);
-    nodeMap.set(username, mainNode);
-    updateGraphWithAnimation();
+    socket.emit('start_scraping', scrapingData);
     
-    console.log("Scraping démarré");
+    // Ajouter le nœud principal seulement s'il n'existe pas déjà
+    if (!nodeMap.has(username)) {
+        const mainNode = {
+            id: username,
+            label: username,
+            isMain: true,
+            x: width / 2,
+            y: height / 2,
+            vx: 0,
+            vy: 0
+        };
+        
+        nodes.push(mainNode);
+        nodeMap.set(username, mainNode);
+        updateGraphWithAnimation();
+    }
+    
+    // Marquer l'utilisateur principal comme scrapé
+    scrapedUsers.add(username);
+    updateStats();
+    
+    console.log(continueFromImport ? "Continuation du scraping" : "Nouveau scraping démarré");
 };
 
 // Gestion des événements Socket.IO
@@ -469,12 +1247,19 @@ socket.on('session_cleared', function(data) {
 socket.on('new_edge', function(data) {
     console.log('Nouvelle arête:', data);
     
-    // Ajouter au batch au lieu de traiter immédiatement
+    // Ne pas ajouter si on a déjà scrapé cet utilisateur (pour la continuation)
+    if (continueFromImport && scrapedUsers.has(data.source)) {
+        console.log(`Utilisateur ${data.source} déjà scrapé, passage...`);
+        return;
+    }
+    
     addNodeToBatch(data.source, data.source);
     addNodeToBatch(data.target, data.target);
     addLinkToBatch(data.source, data.target);
     
-    // Programmer le traitement du batch
+    // Marquer l'utilisateur source comme scrapé
+    scrapedUsers.add(data.source);
+    
     scheduleBatchProcessing();
 });
 
@@ -489,22 +1274,31 @@ socket.on('error', function(data) {
 socket.on('done', function() {
     console.log('Scraping terminé');
     
-    // Traiter le dernier batch s'il y en a un
     if (batchTimer) {
         clearTimeout(batchTimer);
         processBatch();
     }
     
-    showStatusMessage('✅ Scraping terminé avec succès', 'success');
+    const message = continueFromImport ? 
+        '✅ Continuation du scraping terminée avec succès' :
+        '✅ Scraping terminé avec succès';
+    
+    showStatusMessage(message, 'success');
     document.getElementById('loginForm').style.opacity = 1;
     document.getElementById('loginForm').querySelectorAll('input,button').forEach(el=>el.disabled=false);
     isStarted = false;
     
-    // Centrer automatiquement à la fin
+    // Réinitialiser le flag de continuation
+    continueFromImport = false;
+    
     setTimeout(centerGraph, 1000);
 });
 
 // Initialisation
 applyMode(currentMode);
 initGraph();
-console.log("Application initialisée avec D3.js et système de batch");
+initSearch();
+initExportModal();
+initImportModal();
+updateStats();
+console.log("Application initialisée avec D3.js, système de batch, recherche, export/import et espacement amélioré");
