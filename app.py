@@ -91,20 +91,15 @@ def start_scraping(data):
     username = data['username']
     password = data['password']
     max_depth = int(data.get('max_depth', 2))
-    continue_from_import = data.get('continue_from_import', False)
-    scraped_users = set(data.get('scraped_users', []))
     
     thread = threading.Thread(
         target=explore_and_stream, 
-        args=(username, password, max_depth, continue_from_import, scraped_users)
+        args=(username, password, max_depth)
     )
     thread.daemon = True
     thread.start()
 
-def explore_and_stream(username, password, max_depth, continue_from_import=False, scraped_users=None):
-    if scraped_users is None:
-        scraped_users = set()
-    
+def explore_and_stream(username, password, max_depth):
     try:
         # Utiliser la fonction de gestion de session
         cl, session_reused = get_or_create_instagram_client(username, password)
@@ -116,24 +111,11 @@ def explore_and_stream(username, password, max_depth, continue_from_import=False
         })
         
         user_id = cl.user_id_from_username(username)
-        visited = set(scraped_users) if continue_from_import else set()
-        
-        # Ajouter l'utilisateur principal aux visités
-        visited.add(username)
-        
-        if not continue_from_import:
-            G.clear()
+        visited = set()
+        G.clear()
         
         def explore(current_username, user_id, depth):
-            if depth > max_depth:
-                return
-                
-            # Si on continue depuis un import et que cet utilisateur a déjà été scrapé, passer
-            if continue_from_import and current_username in scraped_users:
-                print(f"Utilisateur {current_username} déjà scrapé, passage...")
-                return
-                
-            if current_username in visited:
+            if depth > max_depth or current_username in visited:
                 return
                 
             visited.add(current_username)
@@ -142,7 +124,6 @@ def explore_and_stream(username, password, max_depth, continue_from_import=False
                 # Pause aléatoire pour éviter la détection
                 wait_random(2, 5)
                 
-                print(f"Exploration de {current_username} (profondeur {depth})")
                 followers = cl.user_followers(user_id)
                 
                 for i, f in enumerate(followers.values()):
@@ -161,8 +142,7 @@ def explore_and_stream(username, password, max_depth, continue_from_import=False
                     # Exploration récursive
                     if depth < max_depth:
                         try:
-                            follower_user_id = cl.user_id_from_username(f.username)
-                            explore(f.username, follower_user_id, depth + 1)
+                            explore(f.username, f.pk, depth + 1)
                         except Exception as e:
                             print(f"Erreur lors de l'exploration de {f.username}: {e}")
                             continue
