@@ -27,6 +27,9 @@ let continueFromImport = false;
 let importedMainUser = null;
 let scrapedUsers = new Set();
 
+// Variable pour contrôler la stabilité du drag
+let isDragging = false;
+
 // Applique le mode au <body>
 function applyMode(mode) {
     if(mode === "light") {
@@ -59,7 +62,7 @@ function updateStats() {
     document.getElementById('search-stats').style.display = nodes.length > 0 ? 'block' : 'none';
 }
 
-// === FONCTIONS D'EXPORT (existantes) ===
+// === FONCTIONS D'EXPORT (inchangées) ===
 
 function escapeXml(text) {
     if (typeof text !== 'string') text = String(text);
@@ -815,7 +818,7 @@ function clearSearch() {
     searchInput.focus();
 }
 
-// INITIALISATION DU GRAPHE AVEC ESPACEMENT AMÉLIORÉ
+// INITIALISATION DU GRAPHE AVEC STABILITÉ AMÉLIORÉE
 function initGraph() {
     const container = document.getElementById('graph-container');
     width = container.clientWidth;
@@ -831,22 +834,22 @@ function initGraph() {
     const nodeGroup = svg.append('g').attr('class', 'nodes');
     const labelGroup = svg.append('g').attr('class', 'labels');
     
-    // PARAMÈTRES MODIFIÉS POUR PLUS D'ESPACEMENT
+    // PARAMÈTRES OPTIMISÉS POUR LA STABILITÉ LORS DU DRAG
     simulation = d3.forceSimulation()
         .force('link', d3.forceLink().id(d => d.id)
-            .distance(180)        // Augmenté de 100 à 180
-            .strength(0.2))       // Réduit de 0.3 à 0.2 pour des liens plus faibles
+            .distance(180)        
+            .strength(0.1))       // RÉDUIT à 0.1 pour éviter les réactions en chaîne
         .force('charge', d3.forceManyBody()
-            .strength(-800)       // Augmenté de -400 à -800 pour plus de répulsion
-            .distanceMax(500))    // Augmenté de 300 à 500
+            .strength(-600)       // RÉDUIT à -600 pour moins de force
+            .distanceMax(400))    // RÉDUIT à 400 pour limiter l'influence
         .force('center', d3.forceCenter(width / 2, height / 2))
         .force('collision', d3.forceCollide()
-            .radius(50)           // Augmenté de 30 à 50 pour éviter les chevauchements
-            .strength(1.0))       // Augmenté de 0.9 à 1.0 pour plus de force
-        .force('x', d3.forceX(width / 2).strength(0.03))  // Réduit de 0.05 à 0.03
-        .force('y', d3.forceY(height / 2).strength(0.03)) // Réduit de 0.05 à 0.03
-        .alphaDecay(0.015)       // Réduit de 0.02 à 0.015 pour plus de stabilité
-        .velocityDecay(0.7);     // Réduit de 0.8 à 0.7 pour plus de mouvement
+            .radius(50)           
+            .strength(0.8))       // RÉDUIT à 0.8 pour moins de rigidité
+        .force('x', d3.forceX(width / 2).strength(0.02))  // RÉDUIT à 0.02
+        .force('y', d3.forceY(height / 2).strength(0.02)) // RÉDUIT à 0.02
+        .alphaDecay(0.03)        // AUGMENTÉ à 0.03 pour stabilisation plus rapide
+        .velocityDecay(0.9);     // AUGMENTÉ à 0.9 pour plus de freinage
     
     const zoom = d3.zoom()
         .scaleExtent([0.1, 4])
@@ -866,14 +869,13 @@ function initGraph() {
         simulation.alpha(0.3).restart();
     });
     
-    console.log('Graphe D3 initialisé avec espacement amélioré');
+    console.log('Graphe D3 initialisé avec stabilité optimisée');
 }
 
-// FONCTION MODIFIÉE POUR CALCULER DES POSITIONS PLUS ESPACÉES
 function calculateOptimalPosition(nodeId, connectedNodes) {
     if (connectedNodes.length === 0) {
         const angle = Math.random() * 2 * Math.PI;
-        const radius = 200 + Math.random() * 200;  // Augmenté de 150+100 à 200+200
+        const radius = 200 + Math.random() * 200;
         return {
             x: width / 2 + Math.cos(angle) * radius,
             y: height / 2 + Math.sin(angle) * radius
@@ -893,7 +895,7 @@ function calculateOptimalPosition(nodeId, connectedNodes) {
     avgY /= connectedNodes.length;
     
     const offsetAngle = Math.random() * 2 * Math.PI;
-    const offsetRadius = 120 + Math.random() * 80;  // Augmenté de 80+40 à 120+80
+    const offsetRadius = 120 + Math.random() * 80;
     
     return {
         x: avgX + Math.cos(offsetAngle) * offsetRadius,
@@ -1090,11 +1092,20 @@ function highlightNode(nodeElement) {
     }, 2000);
 }
 
+// FONCTIONS DE DRAG OPTIMISÉES POUR LA STABILITÉ
 function dragstarted(event, d) {
-    if (!event.active) simulation.alphaTarget(0.3).restart();
+    isDragging = true;
+    
+    // Réduire fortement l'alpha pendant le drag pour minimiser les perturbations
+    if (!event.active) simulation.alphaTarget(0.1).restart();
+    
     d.fx = d.x;
     d.fy = d.y;
     d3.select(this).classed('dragging', true);
+    
+    // Réduire temporairement les forces pour éviter les réactions en chaîne
+    simulation.force('charge').strength(-200);
+    simulation.force('link').strength(0.05);
 }
 
 function dragged(event, d) {
@@ -1103,10 +1114,25 @@ function dragged(event, d) {
 }
 
 function dragended(event, d) {
+    isDragging = false;
+    
+    // Arrêter complètement la simulation après le drag
     if (!event.active) simulation.alphaTarget(0);
+    
     d.fx = null;
     d.fy = null;
     d3.select(this).classed('dragging', false);
+    
+    // Restaurer les forces après un délai
+    setTimeout(() => {
+        if (!isDragging) {  // Seulement si on n'est pas en train de dragger autre chose
+            simulation.force('charge').strength(-600);
+            simulation.force('link').strength(0.1);
+            
+            // Relancer brièvement la simulation pour stabiliser
+            simulation.alpha(0.1).restart();
+        }
+    }, 500);
 }
 
 function centerGraph() {
@@ -1119,7 +1145,7 @@ function centerGraph() {
     const centerY = d3.mean(nodes, d => d.y);
     
     const transform = d3.zoomIdentity
-        .translate(width / 2 - centerX, height / 2 - centerY);
+        .translate(width / 2 - centerX, width / 2 - centerY);
     
     svg_element.transition()
         .duration(750)
@@ -1301,4 +1327,4 @@ initSearch();
 initExportModal();
 initImportModal();
 updateStats();
-console.log("Application initialisée avec D3.js, système de batch, recherche, export/import et espacement amélioré");
+console.log("Application initialisée avec D3.js, système de batch, recherche, export/import et stabilité optimisée");
