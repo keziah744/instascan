@@ -6,7 +6,7 @@ Un outil épuré et moderne pour visualiser et explorer les réseaux de follower
 ![Python](https://img.shields.io/badge/python-3.7+-green.svg)
 ![License](https://img.shields.io/badge/license-MIT-orange.svg)
 
-## ✨ Fonctionnalités
+## Fonctionnalités
 
 - **Visualisation en temps réel** : Le graphe se construit sous vos yeux pendant l'exploration
 - **Interface épurée** : Design minimaliste inspiré d'Apple avec mode sombre/clair
@@ -15,7 +15,7 @@ Un outil épuré et moderne pour visualiser et explorer les réseaux de follower
 - **Graphe interactif** : Zoom, déplacement, sélection des nœuds
 - **Responsive** : Fonctionne sur desktop et mobile
 
-## 🚀 Installation
+## Installation
 
 ### Prérequis
 - Python 3.7 ou supérieur
@@ -42,7 +42,7 @@ python app.py
 4. **Accédez à l'interface**
 Ouvrez votre navigateur et allez sur [http://localhost:5000](http://localhost:5000)
 
-## 📋 Utilisation
+## Utilisation
 
 ### Interface utilisateur
 
@@ -83,7 +83,7 @@ L'application génère automatiquement des fichiers de session (`username_sessio
 
 ⚠️ **Important** : Ne partagez jamais ces fichiers de session
 
-## 🛡️ Sécurité et bonnes pratiques
+## Sécurité et bonnes pratiques
 
 ### Recommandations
 - Utilisez des délais raisonnables entre les requêtes
@@ -96,7 +96,7 @@ L'application génère automatiquement des fichiers de session (`username_sessio
 - Gestion des comptes privés (ignorés)
 - Protection contre les blocages temporaires
 
-## 🎨 Personnalisation
+## Personnalisation
 
 ### Modifier l'apparence
 Éditez les variables CSS dans `templates/index.html` :
@@ -115,7 +115,7 @@ Modifiez `app.py` pour :
 - Limiter le nombre de followers récupérés
 - Ajouter des filtres personnalisés
 
-## 📊 Technologies utilisées
+## Technologies utilisées
 
 - **Backend** : Flask, Flask-SocketIO
 - **Instagram API** : Instagrapi
@@ -133,7 +133,7 @@ Les contributions sont les bienvenues ! Pour contribuer :
 4. Poussez vers la branche (`git push origin feature/nouvelle-fonctionnalite`)
 5. Ouvrez une Pull Request
 
-## 📝 Roadmap
+## Roadmap
 
 - [ ] Export des graphiques (PNG, SVG, JSON)
 - [ ] Filtres avancés (par nombre de followers, date...)
@@ -150,15 +150,6 @@ Cet outil est destiné à des fins éducatives et de recherche. Assurez-vous de 
 - La vie privée des utilisateurs
 
 L'utilisation de cet outil est sous votre responsabilité.
-
-## 📄 License
-
-Ce projet est sous licence MIT. Voir le fichier [LICENSE](LICENSE) pour plus de détails.
-
-## 👤 Auteur
-
-**Pinpin0909**
-- GitHub: [@Pinpin0909](https://github.com/Pinpin0909)
 
 ## 🙏 Remerciements
 
