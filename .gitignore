@@ -1,0 +1,10 @@
+# Python
+__pycache__/
+*.pyc
+
+# Sessions Instagram (contiennent des jetons d'authentification — ne jamais committer)
+instagram_sessions/
+*_session.json
+
+# Logs
+*.log

@@ -1320,6 +1320,56 @@ socket.on('done', function() {
     setTimeout(centerGraph, 1000);
 });
 
+// --- Double authentification (2FA) / challenge Instagram ---
+let twofaUsername = null;
+
+function closeTwofaModal() {
+    document.getElementById('twofa-modal').style.display = 'none';
+    document.getElementById('twofa-code').value = '';
+}
+
+function submitTwofaCode() {
+    const code = document.getElementById('twofa-code').value.trim();
+    if (!code) {
+        showStatusMessage('Veuillez entrer le code de vérification', 'warning');
+        return;
+    }
+    socket.emit('submit_2fa', { username: twofaUsername, code: code });
+    closeTwofaModal();
+    showStatusMessage('🔐 Vérification du code en cours...', 'info');
+}
+
+socket.on('need_2fa', function(data) {
+    twofaUsername = data.username;
+    const isChallenge = data.reason && data.reason.indexOf('challenge') === 0;
+    document.getElementById('twofa-message').textContent = isChallenge
+        ? "Instagram demande une vérification. Entrez le code reçu par email ou SMS."
+        : "Entrez le code de double authentification (application d'authentification ou SMS).";
+    document.getElementById('twofa-code').value = '';
+    document.getElementById('twofa-modal').style.display = 'flex';
+    document.getElementById('twofa-code').focus();
+    showStatusMessage('🔐 Code de vérification requis', 'warning');
+});
+
+document.getElementById('twofa-confirm').onclick = submitTwofaCode;
+
+document.getElementById('twofa-code').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') {
+        e.preventDefault();
+        submitTwofaCode();
+    }
+});
+
+document.getElementById('twofa-cancel').onclick = function() {
+    // Débloque le backend avec un code vide : le login échouera proprement.
+    socket.emit('submit_2fa', { username: twofaUsername, code: '' });
+    closeTwofaModal();
+    showStatusMessage('Connexion annulée', 'info');
+    document.getElementById('loginForm').style.opacity = 1;
+    document.getElementById('loginForm').querySelectorAll('input,button').forEach(el=>el.disabled=false);
+    isStarted = false;
+};
+
 // Initialisation
 applyMode(currentMode);
 initGraph();

@@ -1,6 +1,7 @@
 from flask import Flask, render_template, request, jsonify
 from flask_socketio import SocketIO, emit
 from instagrapi import Client
+from instagrapi.exceptions import TwoFactorRequired
 import networkx as nx
 import threading
 import os
@@ -19,6 +20,53 @@ session_directory = "instagram_sessions"
 # Créer le dossier des sessions s'il n'existe pas
 if not os.path.exists(session_directory):
     os.makedirs(session_directory)
+
+# --- Gestion des codes de vérification (2FA / challenge Instagram) ---
+# Quand Instagram demande un code (double authentification ou "challenge"
+# email/SMS), le thread de scraping se met en pause et attend que le front
+# renvoie le code via l'événement socket 'submit_2fa'.
+verification_events = {}   # username -> threading.Event
+verification_codes = {}    # username -> str (code saisi par l'utilisateur)
+
+
+def request_verification_code(username, reason):
+    """
+    Demande un code de vérification au front-end et attend la réponse.
+    Retourne le code saisi (str) ou None si l'utilisateur n'a pas répondu à temps.
+    Bloque le thread appelant jusqu'à réception du code (max 5 minutes).
+    """
+    event = threading.Event()
+    verification_events[username] = event
+    verification_codes.pop(username, None)
+
+    socketio.emit('need_2fa', {'username': username, 'reason': reason})
+
+    got_code = event.wait(timeout=300)  # 5 minutes pour saisir le code
+    verification_events.pop(username, None)
+
+    if not got_code:
+        return None
+    return verification_codes.pop(username, None)
+
+
+def login_with_verification(client, username, password):
+    """
+    Effectue le login instagrapi en gérant la double authentification (2FA).
+    Les challenges email/SMS sont pris en charge via challenge_code_handler
+    (défini sur le client avant l'appel).
+    """
+    try:
+        client.login(username, password)
+    except TwoFactorRequired:
+        # Le compte a la double authentification activée : Instagram attend
+        # un code (application d'authentification ou SMS).
+        print(f"2FA requise pour {username}, demande du code au front...")
+        code = request_verification_code(username, 'twofactor')
+        if not code:
+            raise Exception(
+                "Code de double authentification non fourni (délai dépassé)."
+            )
+        client.login(username, password, verification_code=code)
 
 def get_session_file(username):
     """Retourne le chemin du fichier de session pour un utilisateur"""
@@ -50,14 +98,22 @@ def get_or_create_instagram_client(username, password):
     # Créer un nouveau client
     client = Client()
     session_reused = False
-    
+
+    # Gestion des "challenges" Instagram (vérification email/SMS) : instagrapi
+    # appelle ce handler et attend le code, qu'on demande au front-end.
+    def challenge_code_handler(challenge_username, choice):
+        code = request_verification_code(challenge_username, f'challenge_{choice}')
+        return code or False
+
+    client.challenge_code_handler = challenge_code_handler
+
     try:
         # Essayer de charger une session existante
         if os.path.exists(session_file):
             print(f"Chargement de la session existante pour {username}")
             client.load_settings(session_file)
             try:
-                client.login(username, password)
+                login_with_verification(client, username, password)
                 session_reused = True
                 print(f"Session rechargée avec succès pour {username}")
             except Exception as e:
@@ -65,11 +121,11 @@ def get_or_create_instagram_client(username, password):
                 # Supprimer le fichier de session corrompu
                 os.remove(session_file)
                 raise e
-        
+
         # Si pas de session ou si le rechargement a échoué, créer une nouvelle session
         if not session_reused:
             print(f"Création d'une nouvelle session pour {username}")
-            client.login(username, password)
+            login_with_verification(client, username, password)
             client.dump_settings(session_file)
             print(f"Nouvelle session sauvegardée pour {username}")
             wait_random(5, 10)  # Attente plus longue après une nouvelle connexion
@@ -163,6 +219,15 @@ def explore_and_stream(username, password, max_depth):
             'message': 'Erreur de connexion Instagram',
             'error': str(e)
         })
+
+@socketio.on('submit_2fa')
+def submit_2fa(data):
+    """Reçoit le code de vérification saisi par l'utilisateur et débloque le login."""
+    username = data.get('username')
+    code = (data.get('code') or '').strip()
+    if username and username in verification_events:
+        verification_codes[username] = code
+        verification_events[username].set()
 
 @socketio.on('clear_session')
 def clear_session(data):

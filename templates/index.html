@@ -366,6 +366,103 @@
             transform: translateY(-1px);
         }
         
+        /* Modale de double authentification (2FA) */
+        #twofa-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.7);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 150;
+            backdrop-filter: blur(5px);
+        }
+
+        #twofa-modal-content {
+            background: var(--form-bg);
+            border-radius: 12px;
+            padding: 24px;
+            max-width: 380px;
+            width: 90%;
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--input-border);
+            text-align: center;
+        }
+
+        #twofa-modal-content h3 {
+            margin: 0 0 12px 0;
+            color: var(--text);
+            font-size: 1.2em;
+        }
+
+        #twofa-message {
+            color: var(--text);
+            opacity: 0.85;
+            font-size: 0.95em;
+            margin: 0 0 16px 0;
+            line-height: 1.4;
+        }
+
+        #twofa-code {
+            width: 100%;
+            box-sizing: border-box;
+            font-family: inherit;
+            font-size: 1.4em;
+            letter-spacing: 6px;
+            text-align: center;
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px solid var(--input-border);
+            background: var(--input-bg);
+            color: var(--input-text);
+            outline: none;
+            margin-bottom: 16px;
+        }
+
+        #twofa-code:focus {
+            border-color: #0af;
+            box-shadow: 0 0 0 2px rgba(0, 170, 255, 0.2);
+        }
+
+        #twofa-modal-buttons {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+        }
+
+        #twofa-modal-buttons button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 1em;
+            transition: all 0.2s;
+        }
+
+        #twofa-cancel {
+            background: var(--input-bg);
+            color: var(--text);
+            border: 1px solid var(--input-border);
+        }
+
+        #twofa-cancel:hover {
+            background: var(--input-border);
+        }
+
+        #twofa-confirm {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            font-weight: 600;
+        }
+
+        #twofa-confirm:hover {
+            background: linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%);
+        }
+
         /* Export/Import modal */
         #export-modal, #import-modal {
             position: fixed;
@@ -703,6 +800,20 @@
         <div id="import-modal-buttons">
             <button id="import-cancel">Annuler</button>
             <button id="import-confirm" disabled>Importer</button>
+        </div>
+    </div>
+</div>
+
+<!-- Modale de double authentification (2FA / challenge Instagram) -->
+<div id="twofa-modal">
+    <div id="twofa-modal-content">
+        <h3>🔐 Code de vérification</h3>
+        <p id="twofa-message">Entrez le code de double authentification envoyé par Instagram.</p>
+        <input type="text" id="twofa-code" inputmode="numeric" autocomplete="one-time-code"
+               placeholder="Code à 6 chiffres" maxlength="8">
+        <div id="twofa-modal-buttons">
+            <button id="twofa-cancel">Annuler</button>
+            <button id="twofa-confirm">Valider</button>
         </div>
     </div>
 </div>
