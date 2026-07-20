@@ -1291,7 +1291,10 @@ socket.on('new_edge', function(data) {
 
 socket.on('error', function(data) {
     console.error('Erreur:', data);
-    showStatusMessage(`❌ Erreur: ${data.message}`, 'error');
+    const detail = (data.error && data.error !== data.message) ? `  —  ${data.error}` : '';
+    showStatusMessage(`❌ ${data.message}${detail}`, 'error');
+    // Ferme la fenêtre 2FA si elle était ouverte
+    document.getElementById('twofa-modal').style.display = 'none';
     document.getElementById('loginForm').style.opacity = 1;
     document.getElementById('loginForm').querySelectorAll('input,button').forEach(el=>el.disabled=false);
     isStarted = false;
@@ -1378,3 +1381,4 @@ initExportModal();
 initImportModal();
 updateStats();
 console.log("Application initialisée avec D3.js, système de batch, recherche, export/import et stabilité optimisée");
+console.log("%c[instascan build: 2fa-v2]", "color:#38ef7d;font-weight:bold");

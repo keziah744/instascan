@@ -214,10 +214,28 @@ def explore_and_stream(username, password, max_depth):
         socketio.emit('done')
         
     except Exception as e:
-        print(f"Erreur générale: {e}")
+        err_type = type(e).__name__
+        err_text = str(e)
+        print(f"Erreur générale: [{err_type}] {err_text}")
+
+        # Message clair selon la cause réelle renvoyée par Instagram.
+        low = err_text.lower()
+        if err_type == 'BadPassword' or 'password' in low:
+            message = "Mot de passe incorrect (utilise ton @ Instagram, pas ton e-mail)."
+        elif 'few minutes' in low or '429' in low or 'wait' in low:
+            message = ("Instagram bloque temporairement les tentatives de connexion "
+                       "(trop d'essais). Attends 30 min à quelques heures avant de réessayer.")
+        elif 'challenge' in low or err_type in ('ChallengeRequired', 'ChallengeError'):
+            message = ("Instagram demande une vérification (« challenge ») qui n'a pas pu "
+                       "être résolue automatiquement. Connecte-toi une fois dans l'app "
+                       "Instagram officielle ou sur instagram.com, valide la vérification, "
+                       "puis réessaie.")
+        else:
+            message = "Erreur de connexion Instagram"
+
         socketio.emit('error', {
-            'message': 'Erreur de connexion Instagram',
-            'error': str(e)
+            'message': message,
+            'error': f'[{err_type}] {err_text}'
         })
 
 @socketio.on('submit_2fa')
