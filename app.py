@@ -177,15 +177,21 @@ def start_scraping(data):
     password = data.get('password') or ''
     sessionid = (data.get('sessionid') or '').strip()
     max_depth = int(data.get('max_depth', 2))
+    # Nombre max d'abonnés récupérés par compte (0 = tous). Limiter évite les
+    # scans interminables et un graphe trop lourd qui rame.
+    try:
+        followers_limit = int(data.get('followers_limit', 50))
+    except (TypeError, ValueError):
+        followers_limit = 50
 
     thread = threading.Thread(
         target=explore_and_stream,
-        args=(username, password, max_depth, sessionid)
+        args=(username, password, max_depth, sessionid, followers_limit)
     )
     thread.daemon = True
     thread.start()
 
-def explore_and_stream(username, password, max_depth, sessionid=None):
+def explore_and_stream(username, password, max_depth, sessionid=None, followers_limit=50):
     try:
         # Utiliser la fonction de gestion de session
         cl, session_reused = get_or_create_instagram_client(username, password, sessionid)
@@ -209,8 +215,9 @@ def explore_and_stream(username, password, max_depth, sessionid=None):
             try:
                 # Pause aléatoire pour éviter la détection
                 wait_random(2, 5)
-                
-                followers = cl.user_followers(user_id)
+
+                # amount>0 limite le nombre d'abonnés récupérés (scan plus rapide)
+                followers = cl.user_followers(user_id, amount=followers_limit)
                 
                 for i, f in enumerate(followers.values()):
                     G.add_edge(f.username, current_username)

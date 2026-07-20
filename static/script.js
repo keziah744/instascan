@@ -1234,6 +1234,7 @@ document.getElementById('loginForm').onsubmit = function(e) {
     const password = document.getElementById('password').value;
     const sessionid = document.getElementById('sessionid').value.trim();
     const max_depth = document.getElementById('depth').value;
+    const followers_limit = document.getElementById('limit').value;
 
     showStatusMessage(sessionid ? 'Connexion via sessionid...' : 'Connexion en cours...', 'info');
 
@@ -1243,6 +1244,7 @@ document.getElementById('loginForm').onsubmit = function(e) {
         password,
         sessionid,
         max_depth,
+        followers_limit,
         continue_from_import: continueFromImport,
         scraped_users: continueFromImport ? Array.from(scrapedUsers) : []
     };

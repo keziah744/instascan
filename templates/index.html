@@ -692,7 +692,8 @@
         <input type="password" id="password" placeholder="Mot de passe" autocomplete="current-password">
         <input type="password" id="sessionid" placeholder="sessionid (recommandé)"
                autocomplete="off" title="Colle ici ton cookie 'sessionid' d'instagram.com : c'est la méthode la plus fiable, elle contourne le blocage du mot de passe.">
-        <input type="number" id="depth" title="Profondeur" min="1" max="4" value="2">
+        <input type="number" id="depth" title="Profondeur (1 = tes abonnés, 2 = + leurs abonnés)" min="1" max="4" value="1">
+        <input type="number" id="limit" title="Nombre max d'abonnés récupérés par compte (0 = tous). Plus bas = plus rapide." min="0" max="500" value="50">
         <button type="submit">Démarrer</button>
     </form>
 </div>
