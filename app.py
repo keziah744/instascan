@@ -83,20 +83,19 @@ def get_or_create_instagram_client(username, password, sessionid=None):
     Si un sessionid est fourni, on se connecte directement avec (plus fiable :
     contourne le blocage anti-bot du login par mot de passe).
     """
-    session_file = get_session_file(username)
-    
-    # Si le client existe déjà en mémoire, le retourner
-    if username in instagram_clients:
+    # Clé de cache : le compte de CONNEXION (ou le sessionid), pas le compte exploré.
+    cache_key = ("sid:" + sessionid[:16]) if sessionid else username
+
+    # Réutiliser le client déjà connecté si la session est encore valide
+    if cache_key and cache_key in instagram_clients:
         try:
-            # Test rapide pour vérifier si la session est encore valide
-            client = instagram_clients[username]
-            client.account_info()  # Test de connectivité
+            client = instagram_clients[cache_key]
+            client.account_info()  # test de connectivité
             return client, True  # Session réutilisée
         except Exception as e:
-            print(f"Session expirée pour {username}: {e}")
-            # Supprimer le client défaillant
-            del instagram_clients[username]
-    
+            print(f"Session expirée ({cache_key}): {e}")
+            del instagram_clients[cache_key]
+
     # Créer un nouveau client
     client = Client()
     session_reused = False
@@ -124,16 +123,21 @@ def get_or_create_instagram_client(username, password, sessionid=None):
     # bloqué par Instagram) : on réutilise la session déjà ouverte sur le web. ---
     if sessionid:
         try:
-            print(f"Connexion par sessionid pour {username}")
+            print("Connexion par sessionid...")
             client.login_by_sessionid(sessionid.strip())
-            client.dump_settings(session_file)
-            print(f"Connexion par sessionid réussie pour {username}")
-            instagram_clients[username] = client
+            login_user = client.username or username or "session"
+            client.dump_settings(get_session_file(login_user))
+            print(f"Connexion par sessionid réussie ({login_user})")
+            instagram_clients[cache_key] = client
             return client, False
         except Exception as e:
             print(f"Échec de la connexion par sessionid: {e}")
             raise e
 
+    # --- Connexion par mot de passe (nécessite le compte de connexion) ---
+    if not username:
+        raise Exception("Nom d'utilisateur requis pour la connexion par mot de passe.")
+    session_file = get_session_file(username)
     try:
         # Essayer de charger une session existante
         if os.path.exists(session_file):
@@ -156,13 +160,13 @@ def get_or_create_instagram_client(username, password, sessionid=None):
             client.dump_settings(session_file)
             print(f"Nouvelle session sauvegardée pour {username}")
             wait_random(5, 10)  # Attente plus longue après une nouvelle connexion
-    
+
     except Exception as e:
         print(f"Erreur de connexion pour {username}: {e}")
         raise e
-    
+
     # Stocker le client en mémoire
-    instagram_clients[username] = client
+    instagram_clients[cache_key] = client
     return client, session_reused
 
 @app.route('/')
@@ -173,7 +177,9 @@ def index():
 def start_scraping(data):
     # Normalise le pseudo : enlève les espaces et un éventuel '@' collé au début
     # (Instagram attend le nom d'utilisateur seul, ce qui provoque sinon un BadPassword).
-    username = (data['username'] or '').strip().lstrip('@')
+    username = (data.get('username') or '').strip().lstrip('@')
+    # Compte à explorer (point de départ du graphe). Si vide, on explore le compte connecté.
+    target = (data.get('target') or '').strip().lstrip('@')
     password = data.get('password') or ''
     sessionid = (data.get('sessionid') or '').strip()
     max_depth = int(data.get('max_depth', 2))
@@ -186,23 +192,29 @@ def start_scraping(data):
 
     thread = threading.Thread(
         target=explore_and_stream,
-        args=(username, password, max_depth, sessionid, followers_limit)
+        args=(username, password, max_depth, sessionid, followers_limit, target)
     )
     thread.daemon = True
     thread.start()
 
-def explore_and_stream(username, password, max_depth, sessionid=None, followers_limit=50):
+def explore_and_stream(username, password, max_depth, sessionid=None, followers_limit=50, target=None):
     try:
         # Utiliser la fonction de gestion de session
         cl, session_reused = get_or_create_instagram_client(username, password, sessionid)
-        
+
         # Informer le client si la session a été réutilisée
         socketio.emit('session_status', {
             'reused': session_reused,
             'message': 'Session réutilisée' if session_reused else 'Nouvelle connexion'
         })
-        
-        user_id = cl.user_id_from_username(username)
+
+        # Compte à explorer : la cible si fournie, sinon le compte connecté.
+        root = (target or username or getattr(cl, 'username', '') or '').strip().lstrip('@')
+        if not root:
+            raise Exception("Aucun compte à explorer indiqué.")
+        socketio.emit('root_info', {'root': root})
+
+        user_id = cl.user_id_from_username(root)
         visited = set()
         G.clear()
         
@@ -247,7 +259,7 @@ def explore_and_stream(username, password, max_depth, sessionid=None, followers_
                     'error': str(e)
                 })
         
-        explore(username, user_id, 1)
+        explore(root, user_id, 1)
         socketio.emit('done')
         
     except Exception as e:

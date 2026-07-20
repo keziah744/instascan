@@ -1189,16 +1189,19 @@ document.getElementById('loginForm').onsubmit = function(e) {
     e.preventDefault();
     if (isStarted) return;
 
-    // Validation : pseudo obligatoire, et mot de passe OU sessionid
+    // Validation
+    const tCheck = document.getElementById('target').value.trim();
     const uCheck = document.getElementById('username').value.trim();
     const pCheck = document.getElementById('password').value;
     const sCheck = document.getElementById('sessionid').value.trim();
-    if (!uCheck) {
-        showStatusMessage("Entre ton nom d'utilisateur Instagram", 'warning');
+    // Connexion : soit un sessionid, soit compte + mot de passe
+    if (!sCheck && !(uCheck && pCheck)) {
+        showStatusMessage('Connexion requise : sessionid (recommandé), ou ton compte + mot de passe', 'warning');
         return;
     }
-    if (!pCheck && !sCheck) {
-        showStatusMessage('Entre ton mot de passe OU ton sessionid', 'warning');
+    // Compte à explorer : la cible, sinon ton propre compte
+    if (!tCheck && !uCheck) {
+        showStatusMessage('Indique un compte à explorer (ou remplis ton propre compte)', 'warning');
         return;
     }
 
@@ -1230,17 +1233,22 @@ document.getElementById('loginForm').onsubmit = function(e) {
         updateGraphWithAnimation();
     }
 
+    const target = document.getElementById('target').value.trim();
     const username = document.getElementById('username').value.trim();
     const password = document.getElementById('password').value;
     const sessionid = document.getElementById('sessionid').value.trim();
     const max_depth = document.getElementById('depth').value;
     const followers_limit = document.getElementById('limit').value;
 
-    showStatusMessage(sessionid ? 'Connexion via sessionid...' : 'Connexion en cours...', 'info');
+    // Compte réellement exploré (racine du graphe) : la cible, sinon ton compte
+    const root = target || username;
+
+    showStatusMessage(`Exploration du réseau de @${root}...`, 'info');
 
     // Envoyer les informations de continuation si applicable
     const scrapingData = {
         username,
+        target,
         password,
         sessionid,
         max_depth,
@@ -1248,28 +1256,28 @@ document.getElementById('loginForm').onsubmit = function(e) {
         continue_from_import: continueFromImport,
         scraped_users: continueFromImport ? Array.from(scrapedUsers) : []
     };
-    
+
     socket.emit('start_scraping', scrapingData);
-    
-    // Ajouter le nœud principal seulement s'il n'existe pas déjà
-    if (!nodeMap.has(username)) {
+
+    // Ajouter le nœud principal (le compte exploré) seulement s'il n'existe pas déjà
+    if (root && !nodeMap.has(root)) {
         const mainNode = {
-            id: username,
-            label: username,
+            id: root,
+            label: root,
             isMain: true,
             x: width / 2,
             y: height / 2,
             vx: 0,
             vy: 0
         };
-        
+
         nodes.push(mainNode);
-        nodeMap.set(username, mainNode);
+        nodeMap.set(root, mainNode);
         updateGraphWithAnimation();
     }
-    
-    // Marquer l'utilisateur principal comme scrapé
-    scrapedUsers.add(username);
+
+    // Marquer le compte exploré comme scrapé
+    if (root) scrapedUsers.add(root);
     updateStats();
     
     console.log(continueFromImport ? "Continuation du scraping" : "Nouveau scraping démarré");

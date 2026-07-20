@@ -688,11 +688,14 @@
     <button id="toggle-mode-btn" title="Changer le mode">🌙</button>
     <button id="clear-session-btn" title="Nettoyer la session">🗑️</button>
     <form id="loginForm">
-        <input type="text" id="username" placeholder="Utilisateur Instagram" autocomplete="username" required>
+        <input type="text" id="target" placeholder="🔍 Compte à explorer" autocomplete="off"
+               title="Le compte dont tu veux voir le réseau d'abonnés. Laisse vide pour explorer ton propre compte.">
+        <input type="text" id="username" placeholder="Ton compte (connexion)" autocomplete="username"
+               title="Ton compte de connexion. Facultatif si tu utilises un sessionid.">
         <input type="password" id="password" placeholder="Mot de passe" autocomplete="current-password">
         <input type="password" id="sessionid" placeholder="sessionid (recommandé)"
                autocomplete="off" title="Colle ici ton cookie 'sessionid' d'instagram.com : c'est la méthode la plus fiable, elle contourne le blocage du mot de passe.">
-        <input type="number" id="depth" title="Profondeur (1 = tes abonnés, 2 = + leurs abonnés)" min="1" max="4" value="1">
+        <input type="number" id="depth" title="Profondeur (1 = ses abonnés, 2 = + les abonnés de ses abonnés)" min="1" max="4" value="1">
         <input type="number" id="limit" title="Nombre max d'abonnés récupérés par compte (0 = tous). Plus bas = plus rapide." min="0" max="500" value="50">
         <button type="submit">Démarrer</button>
     </form>
