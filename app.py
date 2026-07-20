@@ -99,6 +99,17 @@ def get_or_create_instagram_client(username, password):
     client = Client()
     session_reused = False
 
+    # Contexte de connexion cohérent (utilisateur français) + petites pauses :
+    # réduit les rejets "login context suspect" qui provoquent un faux BadPassword.
+    client.delay_range = [1, 3]
+    try:
+        client.set_locale('fr_FR')
+        client.set_country('FR')
+        client.set_country_code(33)
+        client.set_timezone_offset(2 * 3600)  # Europe/Paris (UTC+2 en été)
+    except Exception as e:
+        print(f"Impossible de définir le contexte de connexion: {e}")
+
     # Gestion des "challenges" Instagram (vérification email/SMS) : instagrapi
     # appelle ce handler et attend le code, qu'on demande au front-end.
     def challenge_code_handler(challenge_username, choice):
@@ -144,7 +155,9 @@ def index():
 
 @socketio.on('start_scraping')
 def start_scraping(data):
-    username = data['username']
+    # Normalise le pseudo : enlève les espaces et un éventuel '@' collé au début
+    # (Instagram attend le nom d'utilisateur seul, ce qui provoque sinon un BadPassword).
+    username = (data['username'] or '').strip().lstrip('@')
     password = data['password']
     max_depth = int(data.get('max_depth', 2))
     
