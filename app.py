@@ -77,9 +77,11 @@ def wait_random(min_sec=3, max_sec=8):
     delay = random.uniform(min_sec, max_sec)
     time.sleep(delay)
 
-def get_or_create_instagram_client(username, password):
+def get_or_create_instagram_client(username, password, sessionid=None):
     """
-    Récupère ou crée un client Instagram avec gestion de session persistante
+    Récupère ou crée un client Instagram avec gestion de session persistante.
+    Si un sessionid est fourni, on se connecte directement avec (plus fiable :
+    contourne le blocage anti-bot du login par mot de passe).
     """
     session_file = get_session_file(username)
     
@@ -117,6 +119,20 @@ def get_or_create_instagram_client(username, password):
         return code or False
 
     client.challenge_code_handler = challenge_code_handler
+
+    # --- Connexion par sessionid (recommandé si le login par mot de passe est
+    # bloqué par Instagram) : on réutilise la session déjà ouverte sur le web. ---
+    if sessionid:
+        try:
+            print(f"Connexion par sessionid pour {username}")
+            client.login_by_sessionid(sessionid.strip())
+            client.dump_settings(session_file)
+            print(f"Connexion par sessionid réussie pour {username}")
+            instagram_clients[username] = client
+            return client, False
+        except Exception as e:
+            print(f"Échec de la connexion par sessionid: {e}")
+            raise e
 
     try:
         # Essayer de charger une session existante
@@ -158,20 +174,21 @@ def start_scraping(data):
     # Normalise le pseudo : enlève les espaces et un éventuel '@' collé au début
     # (Instagram attend le nom d'utilisateur seul, ce qui provoque sinon un BadPassword).
     username = (data['username'] or '').strip().lstrip('@')
-    password = data['password']
+    password = data.get('password') or ''
+    sessionid = (data.get('sessionid') or '').strip()
     max_depth = int(data.get('max_depth', 2))
-    
+
     thread = threading.Thread(
-        target=explore_and_stream, 
-        args=(username, password, max_depth)
+        target=explore_and_stream,
+        args=(username, password, max_depth, sessionid)
     )
     thread.daemon = True
     thread.start()
 
-def explore_and_stream(username, password, max_depth):
+def explore_and_stream(username, password, max_depth, sessionid=None):
     try:
         # Utiliser la fonction de gestion de session
-        cl, session_reused = get_or_create_instagram_client(username, password)
+        cl, session_reused = get_or_create_instagram_client(username, password, sessionid)
         
         # Informer le client si la session a été réutilisée
         socketio.emit('session_status', {

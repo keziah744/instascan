@@ -1188,7 +1188,20 @@ document.getElementById('clear-graph-btn').onclick = clearGraph;
 document.getElementById('loginForm').onsubmit = function(e) {
     e.preventDefault();
     if (isStarted) return;
-    
+
+    // Validation : pseudo obligatoire, et mot de passe OU sessionid
+    const uCheck = document.getElementById('username').value.trim();
+    const pCheck = document.getElementById('password').value;
+    const sCheck = document.getElementById('sessionid').value.trim();
+    if (!uCheck) {
+        showStatusMessage("Entre ton nom d'utilisateur Instagram", 'warning');
+        return;
+    }
+    if (!pCheck && !sCheck) {
+        showStatusMessage('Entre ton mot de passe OU ton sessionid', 'warning');
+        return;
+    }
+
     isStarted = true;
     document.getElementById('loginForm').style.opacity = 0.4;
     document.getElementById('loginForm').querySelectorAll('input,button').forEach(el=>el.disabled=true);
@@ -1219,14 +1232,16 @@ document.getElementById('loginForm').onsubmit = function(e) {
 
     const username = document.getElementById('username').value.trim();
     const password = document.getElementById('password').value;
+    const sessionid = document.getElementById('sessionid').value.trim();
     const max_depth = document.getElementById('depth').value;
 
-    showStatusMessage('Connexion en cours...', 'info');
-    
+    showStatusMessage(sessionid ? 'Connexion via sessionid...' : 'Connexion en cours...', 'info');
+
     // Envoyer les informations de continuation si applicable
-    const scrapingData = { 
-        username, 
-        password, 
+    const scrapingData = {
+        username,
+        password,
+        sessionid,
         max_depth,
         continue_from_import: continueFromImport,
         scraped_users: continueFromImport ? Array.from(scrapedUsers) : []
