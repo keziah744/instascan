@@ -100,8 +100,18 @@ def explore_followers(cl, G, username, user_id, current_depth, max_depth, visite
             wait_random(30, 60)
 
 def main():
-    username = "test_etude_social"  # Remplace par ton @ Instagram (pas l'e-mail)
-    password = "*fa76Ad:g3FkX/q"    # Remplace par ton mot de passe Instagram
+    # Identifiants lus depuis les variables d'environnement : ne jamais écrire
+    # le mot de passe en clair dans le code (le dépôt est public).
+    #   Windows (PowerShell) : $env:IG_USERNAME="ton_compte"; $env:IG_PASSWORD="ton_mdp"
+    #   Linux / Mac          : export IG_USERNAME="ton_compte" IG_PASSWORD="ton_mdp"
+    username = os.getenv("IG_USERNAME")  # ton @ Instagram (pas l'e-mail)
+    password = os.getenv("IG_PASSWORD")  # ton mot de passe Instagram
+    if not username or not password:
+        log_and_print(
+            "[ERREUR] Définis les variables d'environnement IG_USERNAME et "
+            "IG_PASSWORD avant de lancer le script."
+        )
+        return
     session_file = f"{username}_session.json"
     wait_on_error = 120  # secondes à attendre en cas d'erreur normale
     max_depth = 2        # <-- MODIFIE CETTE VALEUR : 1=juste tes followers, 2=+followers de tes followers, 3=etc.
